@@ -1,39 +1,30 @@
-use bytes::Bytes;
+use redis::{ConnectionLike, IntoConnectionInfo};
 use thiserror::Error;
-use tokio::net::{TcpStream, ToSocketAddrs};
 
-use crate::{
-    cmd::Ping,
-    connection::{Connection, ConnectionError},
-    list::RList,
-    map::RMap,
-};
+use crate::{list::RList, map::RMap};
 
 pub struct Client {
-    connection: Connection,
+    inner: redis::Client,
 }
 
 impl Client {
-    pub async fn create<T: ToSocketAddrs>(addr: T) -> Result<Client, ClientError> {
-        let socket = TcpStream::connect(addr).await?;
+    pub fn create<T: IntoConnectionInfo>(addr: T) -> Result<Client, ClientError> {
+        let inner = redis::Client::open(addr)?;
 
-        Ok(Client {
-            connection: Connection::new(socket),
-        })
+        Ok(Client { inner })
     }
 
-    pub async fn ping(mut self) -> Result<Bytes, ClientError> {
-        let ping = Ping;
-        let pong = self.connection.send(ping.parse()).await?;
-        Ok(pong)
+    pub fn is_connected(&self) -> Result<bool, ClientError> {
+        let mut conn = self.inner.get_connection()?;
+        Ok(conn.check_connection())
     }
 
-    pub async fn read_list() -> RList {
-        todo!()
+    pub fn get_list<'a, T>(&'a self, key: &'a str) -> RList<'a, T> {
+        RList::new(key, &self.inner)
     }
 
-    pub async fn read_map() -> RMap {
-        todo!()
+    pub fn get_map<'a, K, V>(&'a self, key: &'a str) -> RMap<'a, K, V> {
+        RMap::new(key, &self.inner)
     }
 }
 
@@ -41,7 +32,7 @@ impl Client {
 #[non_exhaustive]
 pub enum ClientError {
     #[error(transparent)]
-    Connection(#[from] ConnectionError),
+    Redis(#[from] redis::RedisError),
     #[error(transparent)]
     IOError(#[from] std::io::Error),
 }
