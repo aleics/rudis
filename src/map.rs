@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use redis::{AsyncCommands, Commands, FromRedisValue, RedisError, ToRedisArgs};
 
@@ -35,12 +35,7 @@ where
         conn.hset(self.name, key, value)
     }
 
-    pub fn insert_multiple(&self, entries: &[(K, V)]) -> Result<(), RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.hset_multiple(self.name, entries)
-    }
-
-    pub fn exists(&self, key: K) -> Result<bool, RedisError> {
+    pub fn contains(&self, key: K) -> Result<bool, RedisError> {
         let mut conn = self.client.get_connection()?;
         conn.hexists(self.name, key)
     }
@@ -48,6 +43,16 @@ where
     pub fn values(&self) -> Result<Vec<V>, RedisError> {
         let mut conn = self.client.get_connection()?;
         conn.hvals(self.name)
+    }
+
+    pub fn expire(&self, duration: Duration) -> Result<(), RedisError> {
+        let mut conn = self.client.get_connection()?;
+        conn.expire(self.name, duration.as_secs() as i64)
+    }
+
+    pub fn exists(&self) -> Result<bool, RedisError> {
+        let mut conn = self.client.get_connection()?;
+        conn.exists(self.name)
     }
 }
 
@@ -66,12 +71,7 @@ where
         conn.hset(self.name, key, value).await
     }
 
-    pub async fn insert_multiple_async(&self, entries: &[(K, V)]) -> Result<(), RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.hset_multiple(self.name, entries).await
-    }
-
-    pub async fn exists_async(&self, key: K) -> Result<bool, RedisError> {
+    pub async fn contains_async(&self, key: K) -> Result<bool, RedisError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.hexists(self.name, key).await
     }
@@ -79,5 +79,15 @@ where
     pub async fn values_async(&self) -> Result<Vec<V>, RedisError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.hvals(self.name).await
+    }
+
+    pub async fn expire_async(&self, duration: Duration) -> Result<(), RedisError> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        conn.expire(self.name, duration.as_secs() as i64).await
+    }
+
+    pub async fn exists_async(&self) -> Result<bool, RedisError> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        conn.exists(self.name).await
     }
 }

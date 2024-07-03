@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use redis::{AsyncCommands, Commands, FromRedisValue, RedisError, ToRedisArgs};
 
@@ -62,6 +62,10 @@ where
         conn.lindex(self.name, index)
     }
 
+    pub fn read_all(&self) -> Result<Vec<T>, RedisError> {
+        self.range(0, -1)
+    }
+
     pub fn range(&self, start: isize, end: isize) -> Result<Vec<T>, RedisError> {
         let mut conn = self.client.get_connection()?;
         conn.lrange(self.name, start, end)
@@ -106,6 +110,16 @@ where
         conn.del(self.name)
     }
 
+    pub fn expire(&self, duration: Duration) -> Result<(), RedisError> {
+        let mut conn = self.client.get_connection()?;
+        conn.expire(self.name, duration.as_secs() as i64)
+    }
+
+    pub fn exists(&self) -> Result<bool, RedisError> {
+        let mut conn = self.client.get_connection()?;
+        conn.exists(self.name)
+    }
+
     pub fn iter(&'a self) -> Result<RListIter<'a, T>, RedisError> {
         let size = self.size()?;
         Ok(RListIter::new(size, self))
@@ -119,6 +133,10 @@ where
     pub async fn get_async(&self, index: isize) -> Result<Option<T>, RedisError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.lindex(self.name, index).await
+    }
+
+    pub async fn read_all_async(&self) -> Result<Vec<T>, RedisError> {
+        self.range_async(0, -1).await
     }
 
     pub async fn range_async(&self, start: isize, end: isize) -> Result<Vec<T>, RedisError> {
@@ -163,5 +181,15 @@ where
     pub async fn clear_async(&self) -> Result<(), RedisError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.del(self.name).await
+    }
+
+    pub async fn expire_async(&self, duration: Duration) -> Result<(), RedisError> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        conn.expire(self.name, duration.as_secs() as i64).await
+    }
+
+    pub async fn exists_async(&self) -> Result<bool, RedisError> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        conn.exists(self.name).await
     }
 }

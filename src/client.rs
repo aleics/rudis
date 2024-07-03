@@ -3,18 +3,18 @@ use thiserror::Error;
 
 use crate::{list::RList, map::RMap};
 
-pub struct Client {
+pub struct RedisClient {
     inner: redis::Client,
 }
 
-impl Client {
-    pub fn create<T: IntoConnectionInfo>(addr: T) -> Result<Client, ClientError> {
+impl RedisClient {
+    pub fn create<T: IntoConnectionInfo>(addr: T) -> Result<RedisClient, RedisClientError> {
         let inner = redis::Client::open(addr)?;
 
-        Ok(Client { inner })
+        Ok(RedisClient { inner })
     }
 
-    pub fn is_connected(&self) -> Result<bool, ClientError> {
+    pub fn is_connected(&self) -> Result<bool, RedisClientError> {
         let mut conn = self.inner.get_connection()?;
         Ok(conn.check_connection())
     }
@@ -30,7 +30,7 @@ impl Client {
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum ClientError {
+pub enum RedisClientError {
     #[error(transparent)]
     Redis(#[from] redis::RedisError),
     #[error(transparent)]

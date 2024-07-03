@@ -1,11 +1,11 @@
 use rudis::{
-    client::{Client, ClientError},
+    client::{RedisClient, RedisClientError},
     list::RList,
 };
 
 #[tokio::main]
-pub async fn main() -> Result<(), ClientError> {
-    let client = Client::create("redis://127.0.0.1:6379")?;
+pub async fn main() -> Result<(), RedisClientError> {
+    let client = RedisClient::create("redis://127.0.0.1:6379")?;
 
     let response = client.is_connected()?;
     println!("is connected: {}", response);
