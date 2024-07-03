@@ -1,0 +1,70 @@
+on: [push, pull_request]
+
+name: CI
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: run unit tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --lib --bins --all-features
+
+      - name: format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: lint
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-features --tests
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: start container
+        run: docker-compose up -d
+
+      - name: run integration tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --test '*'
+
+      - name: stop container
+        run: docker-compose down
