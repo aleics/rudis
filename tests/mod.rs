@@ -8,6 +8,7 @@ mod integration_tests {
         list::RList,
         map::RMap,
         set::RSet,
+        RObjectAsync,
     };
 
     lazy_static! {

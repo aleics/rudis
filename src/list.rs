@@ -1,6 +1,12 @@
-use std::{marker::PhantomData, time::Duration};
+use std::marker::PhantomData;
 
-use redis::{AsyncCommands, Commands, FromRedisValue, RedisError, ToRedisArgs};
+use async_trait::async_trait;
+use redis::{
+    aio::MultiplexedConnection, AsyncCommands, Commands, Connection, FromRedisValue, RedisError,
+    ToRedisArgs,
+};
+
+use crate::{RObject, RObjectAsync};
 
 pub struct RListIter<'a, T> {
     current: usize,
@@ -105,21 +111,6 @@ where
         conn.ltrim(self.name, start, end)
     }
 
-    pub fn clear(&self) -> Result<(), RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.del(self.name)
-    }
-
-    pub fn expire(&self, duration: Duration) -> Result<(), RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.expire(self.name, duration.as_secs() as i64)
-    }
-
-    pub fn exists(&self) -> Result<bool, RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.exists(self.name)
-    }
-
     pub fn iter(&'a self) -> Result<RListIter<'a, T>, RedisError> {
         let size = self.size()?;
         Ok(RListIter::new(size, self))
@@ -177,19 +168,28 @@ where
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.ltrim(self.name, start, end).await
     }
+}
 
-    pub async fn clear_async(&self) -> Result<(), RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.del(self.name).await
+impl<'a, T> RObject<'a> for RList<'a, T> {
+    fn name(&self) -> &'a str {
+        self.name
     }
 
-    pub async fn expire_async(&self, duration: Duration) -> Result<(), RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.expire(self.name, duration.as_secs() as i64).await
+    fn connection(&self) -> Result<Connection, RedisError> {
+        self.client.get_connection()
+    }
+}
+
+#[async_trait]
+impl<'a, T> RObjectAsync<'a> for RList<'a, T>
+where
+    T: Send + Sync,
+{
+    fn name(&self) -> &'a str {
+        self.name
     }
 
-    pub async fn exists_async(&self) -> Result<bool, RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.exists(self.name).await
+    async fn connection(&self) -> Result<MultiplexedConnection, RedisError> {
+        self.client.get_multiplexed_async_connection().await
     }
 }

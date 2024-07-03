@@ -1,6 +1,12 @@
 use std::{collections::HashSet, hash::Hash, marker::PhantomData};
 
-use redis::{AsyncCommands, Commands, FromRedisValue, RedisError, ToRedisArgs};
+use async_trait::async_trait;
+use redis::{
+    aio::MultiplexedConnection, AsyncCommands, Commands, Connection, FromRedisValue, RedisError,
+    ToRedisArgs,
+};
+
+use crate::{RObject, RObjectAsync};
 
 pub struct RSet<'a, T> {
     name: &'a str,
@@ -50,16 +56,6 @@ where
         let mut conn = self.client.get_connection()?;
         conn.scard(self.name)
     }
-
-    pub fn clear(&self) -> Result<(), RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.del(self.name)
-    }
-
-    pub fn exists(&self) -> Result<bool, RedisError> {
-        let mut conn = self.client.get_connection()?;
-        conn.exists(self.name)
-    }
 }
 
 impl<'a, T> RSet<'a, T>
@@ -94,14 +90,28 @@ where
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.scard(self.name).await
     }
+}
 
-    pub async fn clear_async(&self) -> Result<(), RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.del(self.name).await
+impl<'a, T> RObject<'a> for RSet<'a, T> {
+    fn name(&self) -> &'a str {
+        self.name
     }
 
-    pub async fn exists_async(&self) -> Result<bool, RedisError> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
-        conn.exists(self.name).await
+    fn connection(&self) -> Result<Connection, RedisError> {
+        self.client.get_connection()
+    }
+}
+
+#[async_trait]
+impl<'a, T> RObjectAsync<'a> for RSet<'a, T>
+where
+    T: Send + Sync,
+{
+    fn name(&self) -> &'a str {
+        self.name
+    }
+
+    async fn connection(&self) -> Result<MultiplexedConnection, RedisError> {
+        self.client.get_multiplexed_async_connection().await
     }
 }

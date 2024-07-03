@@ -1,6 +1,7 @@
 use rudis::{
     client::{RedisClient, RedisClientError},
     list::RList,
+    RObjectAsync,
 };
 
 #[tokio::main]
