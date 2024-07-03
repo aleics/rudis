@@ -1,7 +1,7 @@
 use redis::{ConnectionLike, IntoConnectionInfo};
 use thiserror::Error;
 
-use crate::{list::RList, map::RMap};
+use crate::{list::RList, map::RMap, set::RSet};
 
 pub struct RedisClient {
     inner: redis::Client,
@@ -25,6 +25,10 @@ impl RedisClient {
 
     pub fn get_map<'a, K, V>(&'a self, key: &'a str) -> RMap<'a, K, V> {
         RMap::new(key, &self.inner)
+    }
+
+    pub fn get_set<'a, T>(&'a self, key: &'a str) -> RSet<'a, T> {
+        RSet::new(key, &self.inner)
     }
 }
 

@@ -1,10 +1,13 @@
 #[cfg(test)]
 mod integration_tests {
+    use std::collections::HashSet;
+
     use lazy_static::lazy_static;
     use rudis::{
         client::{RedisClient, RedisClientError},
         list::RList,
         map::RMap,
+        set::RSet,
     };
 
     lazy_static! {
@@ -14,7 +17,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_list() -> Result<(), RedisClientError> {
         // given
-        let name = "alphabet";
+        let name = "unique_alphabet";
         let rlist: RList<String> = CLIENT.get_list(name);
 
         // adds entries
@@ -109,6 +112,49 @@ mod integration_tests {
         // get values
         let values = rmap.values_async().await?;
         assert_eq!(values, vec!["alex".to_string(), "martha".to_string()]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set() -> Result<(), RedisClientError> {
+        // given
+        let name = "alphabet";
+        let rset: RSet<String> = CLIENT.get_set(name);
+
+        // adds entries
+        rset.add_all_async(&["a".into(), "b".into(), "c".into(), "d".into(), "e".into()])
+            .await?;
+
+        let size = rset.size_async().await?;
+        assert_eq!(size, 5);
+
+        // contains
+        let has_a = rset.contains_async(&"a".into()).await?;
+        assert!(has_a);
+
+        let has_z = rset.contains_async(&"z".into()).await?;
+        assert!(!has_z);
+
+        // removes entry
+        rset.remove_async(&"d".into()).await?;
+
+        let entries = rset.read_all_async().await?;
+        assert_eq!(
+            entries,
+            HashSet::from([
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "e".to_string()
+            ])
+        );
+
+        // clears list
+        rset.clear_async().await?;
+
+        let exists = rset.exists_async().await?;
+        assert!(!exists);
 
         Ok(())
     }
