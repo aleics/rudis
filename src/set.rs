@@ -111,7 +111,7 @@ where
         self.name
     }
 
-    async fn connection(&self) -> Result<MultiplexedConnection, RedisError> {
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError> {
         self.client.get_multiplexed_async_connection().await
     }
 }

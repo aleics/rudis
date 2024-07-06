@@ -32,20 +32,20 @@ pub trait RObject<'a> {
 pub trait RObjectAsync<'a> {
     fn name(&self) -> &'a str;
 
-    async fn connection(&self) -> Result<MultiplexedConnection, RedisError>;
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError>;
 
     async fn clear_async(&self) -> Result<(), RedisError> {
-        let mut conn = self.connection().await?;
+        let mut conn = self.async_connection().await?;
         conn.del(self.name()).await
     }
 
     async fn exists_async(&self) -> Result<bool, RedisError> {
-        let mut conn = self.connection().await?;
+        let mut conn = self.async_connection().await?;
         conn.exists(self.name()).await
     }
 
     async fn expire_async(&self, duration: Duration) -> Result<(), RedisError> {
-        let mut conn = self.connection().await?;
+        let mut conn = self.async_connection().await?;
         conn.expire(self.name(), duration.as_secs() as i64).await
     }
 }

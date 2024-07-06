@@ -2,6 +2,7 @@
 mod integration_tests {
     use std::collections::HashSet;
 
+    use futures::StreamExt;
     use lazy_static::lazy_static;
     use rudis::{
         client::{RedisClient, RedisClientError},
@@ -71,6 +72,15 @@ mod integration_tests {
         rlist.trim_async(0, 2).await?;
 
         let entries = rlist.read_all_async().await?;
+        assert_eq!(
+            entries,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
+
+        // stream values
+        let stream = rlist.stream().await?;
+
+        let entries: Vec<String> = stream.collect().await;
         assert_eq!(
             entries,
             vec!["a".to_string(), "b".to_string(), "c".to_string()]

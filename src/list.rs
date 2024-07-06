@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use futures::{stream, Stream, StreamExt};
 use redis::{
     aio::MultiplexedConnection, AsyncCommands, Commands, Connection, FromRedisValue, RedisError,
     ToRedisArgs,
@@ -43,6 +44,7 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct RList<'a, T> {
     name: &'a str,
     client: &'a redis::Client,
@@ -168,6 +170,23 @@ where
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.ltrim(self.name, start, end).await
     }
+
+    pub async fn stream(&'a self) -> Result<impl Stream<Item = T> + 'a, RedisError> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+
+        let size = conn.llen(self.name).await?;
+
+        let stream = stream::iter(0..size).filter_map(move |index| {
+            let mut conn = conn.clone();
+
+            async move {
+                let result = conn.lindex(self.name, index).await;
+                result.ok().flatten()
+            }
+        });
+
+        Ok(stream)
+    }
 }
 
 impl<'a, T> RObject<'a> for RList<'a, T> {
@@ -189,7 +208,7 @@ where
         self.name
     }
 
-    async fn connection(&self) -> Result<MultiplexedConnection, RedisError> {
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError> {
         self.client.get_multiplexed_async_connection().await
     }
 }

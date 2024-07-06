@@ -54,8 +54,8 @@ where
 
 impl<'a, K, V> RMap<'a, K, V>
 where
-    K: ToRedisArgs + FromRedisValue + Sync + Send,
-    V: ToRedisArgs + FromRedisValue + Sync + Send,
+    K: ToRedisArgs + FromRedisValue + Sync + Send + 'a,
+    V: ToRedisArgs + FromRedisValue + Sync + Send + 'a,
 {
     pub async fn get_async(&self, key: K) -> Result<Option<V>, RedisError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
@@ -98,7 +98,7 @@ where
         self.name
     }
 
-    async fn connection(&self) -> Result<MultiplexedConnection, RedisError> {
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError> {
         self.client.get_multiplexed_async_connection().await
     }
 }
