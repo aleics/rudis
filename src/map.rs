@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use async_trait::async_trait;
 use redis::{
@@ -6,11 +6,15 @@ use redis::{
     ToRedisArgs,
 };
 
-use crate::{RObject, RObjectAsync};
+use crate::{
+    lock::{RLock, RLockGuard},
+    RObject, RObjectAsync, RudisError,
+};
 
 pub struct RMap<'a, K, V> {
     name: &'a str,
     client: &'a redis::Client,
+    pub(crate) lock: RLock<'a>,
     key_phantom: PhantomData<K>,
     value_phantom: PhantomData<V>,
 }
@@ -21,6 +25,7 @@ impl<'a, K, V> RMap<'a, K, V> {
             name,
             client,
             key_phantom: PhantomData,
+            lock: RLock::new(name, client),
             value_phantom: PhantomData,
         }
     }
@@ -83,8 +88,12 @@ impl<'a, K, V> RObject<'a> for RMap<'a, K, V> {
         self.name
     }
 
-    fn connection(&self) -> Result<Connection, RedisError> {
-        self.client.get_connection()
+    fn connection(&self) -> Result<Connection, RudisError> {
+        self.client.get_connection().map_err(RudisError::Redis)
+    }
+
+    fn lock(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError> {
+        self.lock.lock(duration).map_err(RudisError::LockError)
     }
 }
 
@@ -98,7 +107,17 @@ where
         self.name
     }
 
-    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError> {
-        self.client.get_multiplexed_async_connection().await
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RudisError> {
+        self.client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(RudisError::Redis)
+    }
+
+    async fn lock_async(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError> {
+        self.lock
+            .lock_async(duration)
+            .await
+            .map_err(RudisError::LockError)
     }
 }

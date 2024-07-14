@@ -1,17 +1,13 @@
-use rudis::{
-    client::{RedisClient, RedisClientError},
-    list::RList,
-    RObjectAsync,
-};
+use rudis::{client::RedisClient, list::RList, RObjectAsync, RudisError};
 
 #[tokio::main]
-pub async fn main() -> Result<(), RedisClientError> {
+pub async fn main() -> Result<(), RudisError> {
     let client = RedisClient::create("redis://127.0.0.1:6379")?;
 
     let response = client.is_connected()?;
     println!("is connected: {}", response);
 
-    let rlist: RList<String> = client.get_list("my_list");
+    let rlist: RList<String> = client.get_list("my_list")?;
     rlist.push_async("a".into()).await?;
     rlist.push_async("b".into()).await?;
     rlist.push_async("c".into()).await?;

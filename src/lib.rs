@@ -1,51 +1,69 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use redis::{aio::MultiplexedConnection, AsyncCommands, Commands, Connection, RedisError};
+use lock::{RLockGuard, RedisLockError};
+use redis::{aio::MultiplexedConnection, AsyncCommands, Commands, Connection};
+use thiserror::Error;
 
 pub mod client;
 pub mod list;
+pub mod lock;
 pub mod map;
 pub mod set;
 
 pub trait RObject<'a> {
     fn name(&self) -> &'a str;
-    fn connection(&self) -> Result<Connection, RedisError>;
+    fn connection(&self) -> Result<Connection, RudisError>;
+    fn lock(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError>;
 
-    fn clear(&self) -> Result<(), RedisError> {
+    fn clear(&self) -> Result<(), RudisError> {
         let mut conn = self.connection()?;
-        conn.del(self.name())
+        conn.del(self.name()).map_err(RudisError::Redis)
     }
 
-    fn exists(&self) -> Result<bool, RedisError> {
+    fn exists(&self) -> Result<bool, RudisError> {
         let mut conn = self.connection()?;
-        conn.exists(self.name())
+        conn.exists(self.name()).map_err(RudisError::Redis)
     }
 
-    fn expire(&self, duration: Duration) -> Result<(), RedisError> {
+    fn expire(&self, duration: Duration) -> Result<(), RudisError> {
         let mut conn = self.connection()?;
         conn.expire(self.name(), duration.as_secs() as i64)
+            .map_err(RudisError::Redis)
     }
 }
 
 #[async_trait]
 pub trait RObjectAsync<'a> {
     fn name(&self) -> &'a str;
+    async fn async_connection(&self) -> Result<MultiplexedConnection, RudisError>;
+    async fn lock_async(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError>;
 
-    async fn async_connection(&self) -> Result<MultiplexedConnection, RedisError>;
-
-    async fn clear_async(&self) -> Result<(), RedisError> {
+    async fn clear_async(&self) -> Result<(), RudisError> {
         let mut conn = self.async_connection().await?;
-        conn.del(self.name()).await
+        conn.del(self.name()).await.map_err(RudisError::Redis)
     }
 
-    async fn exists_async(&self) -> Result<bool, RedisError> {
+    async fn exists_async(&self) -> Result<bool, RudisError> {
         let mut conn = self.async_connection().await?;
-        conn.exists(self.name()).await
+        conn.exists(self.name()).await.map_err(RudisError::Redis)
     }
 
-    async fn expire_async(&self, duration: Duration) -> Result<(), RedisError> {
+    async fn expire_async(&self, duration: Duration) -> Result<(), RudisError> {
         let mut conn = self.async_connection().await?;
-        conn.expire(self.name(), duration.as_secs() as i64).await
+        conn.expire(self.name(), duration.as_secs() as i64)
+            .await
+            .map_err(RudisError::Redis)
     }
+}
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum RudisError {
+    #[error(transparent)]
+    Redis(#[from] redis::RedisError),
+    #[error(transparent)]
+    LockError(#[from] RedisLockError),
+    #[error(transparent)]
+    IOError(#[from] std::io::Error),
 }
