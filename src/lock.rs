@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use rand::{thread_rng, RngCore};
-use redis::{aio::ConnectionLike as AsyncConnectionLike, cmd, Commands, ConnectionLike};
+use redis::{aio::ConnectionLike as AsyncConnectionLike, cmd, ConnectionLike};
 use thiserror::Error;
 
 const UNLOCK_SCRIPT: &str = r#"
@@ -12,13 +12,22 @@ const UNLOCK_SCRIPT: &str = r#"
     end
 "#;
 
-pub struct RLockGuard<'a> {
-    inner: &'a RLock<'a>,
+const ACQUIRED_SCRIPT: &str = r#"
+    local value = redis.call("GET", KEYS[1])
+    if value == false or value == ARGV[1] then
+        return 1
+    else
+        return 0
+    end
+"#;
+
+pub struct RwLockGuard<'a> {
+    inner: &'a RwLock<'a>,
 }
 
-impl<'a> RLockGuard<'a> {
-    pub(crate) fn new(inner: &'a RLock<'a>) -> Self {
-        RLockGuard { inner }
+impl<'a> RwLockGuard<'a> {
+    pub(crate) fn new(inner: &'a RwLock<'a>) -> Self {
+        RwLockGuard { inner }
     }
 
     pub fn unlock(&self) -> Result<(), RedisLockError> {
@@ -30,7 +39,7 @@ impl<'a> RLockGuard<'a> {
     }
 }
 
-impl<'a> Drop for RLockGuard<'a> {
+impl<'a> Drop for RwLockGuard<'a> {
     fn drop(&mut self) {
         #[allow(unused_variables)]
         // In case the user did not unlock manually, we'll try to unlock after drop.
@@ -42,29 +51,33 @@ impl<'a> Drop for RLockGuard<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct RLock<'a> {
+pub struct RwLock<'a> {
     name: String,
     value: Vec<u8>,
     client: &'a redis::Client,
 }
 
-impl<'a> RLock<'a> {
+impl<'a> RwLock<'a> {
     pub(crate) fn new(name: &'a str, client: &'a redis::Client) -> Self {
-        RLock {
+        RwLock {
             name: format!("{name}_lock"),
             value: generate_value(),
             client,
         }
     }
 
-    pub(crate) fn is_locked(&self) -> Result<bool, RedisLockError> {
+    pub(crate) fn is_acquired(&self) -> Result<bool, RedisLockError> {
         let mut conn = self.client.get_connection()?;
-        let exists = conn.exists(&self.name)?;
+        let script = redis::Script::new(ACQUIRED_SCRIPT);
 
-        Ok(exists)
+        let acquired: i8 = script
+            .key(&self.name)
+            .arg(self.value.clone())
+            .invoke(&mut conn)?;
+        Ok(acquired == 1)
     }
 
-    pub(crate) fn lock(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RedisLockError> {
+    pub(crate) fn lock(&'a self, duration: Duration) -> Result<RwLockGuard<'a>, RedisLockError> {
         let mut conn = self.client.get_connection()?;
 
         let ttl: u64 = duration
@@ -82,7 +95,7 @@ impl<'a> RLock<'a> {
         )?;
 
         if result == redis::Value::Okay {
-            Ok(RLockGuard::new(self))
+            Ok(RwLockGuard::new(self))
         } else {
             Err(RedisLockError::AcquireLockError)
         }
@@ -107,7 +120,7 @@ impl<'a> RLock<'a> {
     pub(crate) async fn lock_async(
         &'a self,
         duration: Duration,
-    ) -> Result<RLockGuard<'a>, RedisLockError> {
+    ) -> Result<RwLockGuard<'a>, RedisLockError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
 
         let ttl: u64 = duration
@@ -127,7 +140,7 @@ impl<'a> RLock<'a> {
             .await?;
 
         if result == redis::Value::Okay {
-            Ok(RLockGuard::new(self))
+            Ok(RwLockGuard::new(self))
         } else {
             Err(RedisLockError::AcquireLockError)
         }
@@ -155,7 +168,7 @@ fn generate_value() -> Vec<u8> {
     buf.to_vec()
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum RedisLockError {
     #[error(transparent)]

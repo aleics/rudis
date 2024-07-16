@@ -7,7 +7,7 @@ use redis::{
 };
 
 use crate::{
-    lock::{RLock, RLockGuard},
+    lock::{RedisLockError, RwLock, RwLockGuard},
     RObject, RObjectAsync, RudisError,
 };
 
@@ -50,7 +50,7 @@ where
 pub struct RList<'a, T> {
     name: &'a str,
     client: &'a redis::Client,
-    pub(crate) lock: RLock<'a>,
+    lock: RwLock<'a>,
     phantom: PhantomData<T>,
 }
 
@@ -59,7 +59,7 @@ impl<'a, T> RList<'a, T> {
         RList {
             name,
             client,
-            lock: RLock::new(name, client),
+            lock: RwLock::new(name, client),
             phantom: PhantomData,
         }
     }
@@ -99,17 +99,29 @@ where
     }
 
     pub fn push(&self, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.connection()?;
         conn.rpush(self.name, value).map_err(RudisError::Redis)
     }
 
     pub fn set(&self, index: isize, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.connection()?;
         conn.lset(self.name, index, value)
             .map_err(RudisError::Redis)
     }
 
     pub fn remove(&self, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.connection()?;
         conn.lrem(self.name, 1, value).map_err(RudisError::Redis)
     }
@@ -162,6 +174,10 @@ where
     }
 
     pub async fn push_async(&self, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.rpush(self.name, value)
             .await
@@ -169,6 +185,10 @@ where
     }
 
     pub async fn set_async(&self, index: isize, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.lset(self.name, index, value)
             .await
@@ -176,6 +196,10 @@ where
     }
 
     pub async fn remove_async(&self, value: T) -> Result<(), RudisError> {
+        if !self.is_acquired()? {
+            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
+        }
+
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         conn.lrem(self.name, 1, value)
             .await
@@ -216,8 +240,12 @@ impl<'a, T> RObject<'a> for RList<'a, T> {
         self.client.get_connection().map_err(RudisError::Redis)
     }
 
-    fn lock(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError> {
+    fn lock(&'a self, duration: Duration) -> Result<RwLockGuard<'a>, RudisError> {
         self.lock.lock(duration).map_err(RudisError::LockError)
+    }
+
+    fn is_acquired(&self) -> Result<bool, RudisError> {
+        self.lock.is_acquired().map_err(RudisError::LockError)
     }
 }
 
@@ -226,10 +254,6 @@ impl<'a, T> RObjectAsync<'a> for RList<'a, T>
 where
     T: Send + Sync,
 {
-    fn name(&self) -> &'a str {
-        self.name
-    }
-
     async fn async_connection(&self) -> Result<MultiplexedConnection, RudisError> {
         self.client
             .get_multiplexed_async_connection()
@@ -237,7 +261,7 @@ where
             .map_err(RudisError::Redis)
     }
 
-    async fn lock_async(&'a self, duration: Duration) -> Result<RLockGuard<'a>, RudisError> {
+    async fn lock_async(&'a self, duration: Duration) -> Result<RwLockGuard<'a>, RudisError> {
         self.lock
             .lock_async(duration)
             .await

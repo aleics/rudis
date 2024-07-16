@@ -1,6 +1,6 @@
 use redis::{ConnectionLike, IntoConnectionInfo};
 
-use crate::{list::RList, lock::RedisLockError, map::RMap, set::RSet, RudisError};
+use crate::{list::RList, map::RMap, set::RSet, RudisError};
 
 pub struct RedisClient {
     inner: redis::Client,
@@ -9,7 +9,6 @@ pub struct RedisClient {
 impl RedisClient {
     pub fn create<T: IntoConnectionInfo>(addr: T) -> Result<RedisClient, RudisError> {
         let inner = redis::Client::open(addr)?;
-
         Ok(RedisClient { inner })
     }
 
@@ -18,36 +17,15 @@ impl RedisClient {
         Ok(conn.check_connection())
     }
 
-    pub fn get_list<'a, T>(&'a self, key: &'a str) -> Result<RList<'a, T>, RudisError> {
-        let list = RList::new(key, &self.inner);
-
-        let is_locked = list.lock.is_locked()?;
-        if is_locked {
-            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
-        }
-
-        Ok(list)
+    pub fn get_list<'a, T>(&'a self, key: &'a str) -> RList<'a, T> {
+        RList::new(key, &self.inner)
     }
 
-    pub fn get_map<'a, K, V>(&'a self, key: &'a str) -> Result<RMap<'a, K, V>, RudisError> {
-        let map = RMap::new(key, &self.inner);
-
-        let is_locked = map.lock.is_locked()?;
-        if is_locked {
-            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
-        }
-
-        Ok(map)
+    pub fn get_map<'a, K, V>(&'a self, key: &'a str) -> RMap<'a, K, V> {
+        RMap::new(key, &self.inner)
     }
 
-    pub fn get_set<'a, T>(&'a self, key: &'a str) -> Result<RSet<'a, T>, RudisError> {
-        let set = RSet::new(key, &self.inner);
-
-        let is_locked = set.lock.is_locked()?;
-        if is_locked {
-            return Err(RudisError::LockError(RedisLockError::EntryIsLocked));
-        }
-
-        Ok(set)
+    pub fn get_set<'a, T>(&'a self, key: &'a str) -> RSet<'a, T> {
+        RSet::new(key, &self.inner)
     }
 }

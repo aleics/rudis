@@ -14,7 +14,7 @@ mod integration_tests {
     async fn test_list() -> Result<(), RudisError> {
         // given
         let name = "alphabet";
-        let rlist: RList<String> = CLIENT.get_list(name)?;
+        let rlist: RList<String> = CLIENT.get_list(name);
 
         // adds entries
         rlist.push_async("a".into()).await?;
@@ -93,7 +93,7 @@ mod integration_tests {
     async fn test_map() -> Result<(), RudisError> {
         // given
         let name = "names";
-        let rmap: RMap<String, String> = CLIENT.get_map(name)?;
+        let rmap: RMap<String, String> = CLIENT.get_map(name);
 
         // adds entries
         rmap.insert_async("a".to_string(), "alex".to_string())
@@ -128,7 +128,7 @@ mod integration_tests {
     async fn test_set() -> Result<(), RudisError> {
         // given
         let name = "unique_alphabet";
-        let rset: RSet<String> = CLIENT.get_set(name)?;
+        let rset: RSet<String> = CLIENT.get_set(name);
 
         // adds entries
         rset.add_all_async(&["a".into(), "b".into(), "c".into(), "d".into(), "e".into()])
@@ -171,7 +171,7 @@ mod integration_tests {
     async fn test_lock_list() -> Result<(), RudisError> {
         // given
         let name = "locked_alphabet";
-        let rlist: RList<String> = CLIENT.get_list(name)?;
+        let rlist: RList<String> = CLIENT.get_list(name);
 
         // locks list
         let guard = rlist.lock_async(Duration::from_secs(60)).await?;
@@ -195,9 +195,10 @@ mod integration_tests {
             ]
         );
 
-        // can't access another list reference with same key
+        // can't write into the same key
         let another_rlist = CLIENT.get_list::<String>(name);
-        assert!(another_rlist.err().is_some());
+        let err = another_rlist.push_async("f".to_string()).await.err();
+        assert!(err.is_some());
 
         // clean up
         rlist.clear_async().await?;
@@ -211,7 +212,7 @@ mod integration_tests {
     async fn test_lock_map() -> Result<(), RudisError> {
         // given
         let name = "locked_names";
-        let rmap: RMap<String, String> = CLIENT.get_map(name)?;
+        let rmap: RMap<String, String> = CLIENT.get_map(name);
 
         // locks map
         let guard = rmap.lock_async(Duration::from_secs(60)).await?;
@@ -225,9 +226,15 @@ mod integration_tests {
         let m = rmap.get_async("m".into()).await?;
         assert_eq!(m, Some("martha".to_string()));
 
-        // can't access another map reference with same key
+        // can't write into the same key
         let another_rmap = CLIENT.get_map::<String, String>(name);
-        assert!(another_rmap.err().is_some());
+        let err = another_rmap
+            .insert_async("f".to_string(), "felipe".to_string())
+            .await
+            .err();
+        assert!(err.is_some());
+
+        assert!(!rmap.contains("f".to_string())?);
 
         // clean up
         rmap.clear_async().await?;
@@ -241,7 +248,7 @@ mod integration_tests {
     async fn test_lock_set() -> Result<(), RudisError> {
         // given
         let name = "locked_unique_alphabet";
-        let rset: RSet<String> = CLIENT.get_set(name)?;
+        let rset: RSet<String> = CLIENT.get_set(name);
 
         // locks set
         let guard = rset.lock_async(Duration::from_secs(60)).await?;
@@ -253,9 +260,10 @@ mod integration_tests {
         let has_a = rset.contains_async(&"a".into()).await?;
         assert!(has_a);
 
-        // can't access another set reference with same key
+        // can't write into the same key
         let another_rset = CLIENT.get_set::<String>(name);
-        assert!(another_rset.err().is_some());
+        let err = another_rset.add_async("f".to_string()).await.err();
+        assert!(err.is_some());
 
         // clean up
         rset.clear_async().await?;
